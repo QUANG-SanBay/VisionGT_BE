@@ -99,10 +99,11 @@ DATABASES = {
         'NAME': config('DB_NAME'),
         'USER': config('DB_USER'),
         'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
+        'HOST': config('DB_HOST'),  # Sẽ nhận giá trị '127.0.0.1,1433'
+        'PORT': '',                 # Để trống hoàn toàn
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
+            'extra_params': 'TrustServerCertificate=yes;',
         },
     }
 }
