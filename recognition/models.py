@@ -1,5 +1,5 @@
+from django.conf import settings
 from django.db import models
-from django.contrib.auth.models import User
 from traffic_signs.models import TrafficSign
 
 # Create your models here.
@@ -8,7 +8,7 @@ class RecognitionHistory(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     input_image_url = models.URLField(max_length=200)
     ouput_image_url = models.URLField(max_length=200)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
     def __str__(self):
         return f"Recognition by {self.user.username} at {self.timestamp}"
