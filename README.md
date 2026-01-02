@@ -12,6 +12,14 @@ Trên macOS/Linux:
 ``` bash
 source venv/bin/activate
 ```
+## Lệnh hữu ích
+ tạo schema cho db
+```bash
+python manage.py makemigrations
+python manage.py migrate
+```
+
+
 ## các thư viện cần thiết
 - pip install djangorestframework
 - pip install djangorestframework-simplejwt  # Cho xác thực JWT
