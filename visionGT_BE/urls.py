@@ -16,9 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from recognition.views import TrafficSignDetectView
-from django.urls import path
+from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/detect/', TrafficSignDetectView.as_view()),
+    path('', include('users.urls')),
+    # path('api/detect/', TrafficSignDetectView.as_view()),
 ]
