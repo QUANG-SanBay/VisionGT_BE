@@ -55,3 +55,25 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
+# class loginSerializer(serializers.ModelSerializer):
+#     email = serializers.EmailField(max_length=100)
+#     class Meta:
+#         model = CustomUser
+#         fields = ['email', 'password']
+#         extra_kwargs = {
+#             'password': {'write_only': True}
+#         }
+#     def validate(self, attrs):
+#         #nếu email không tồn tại trong db thì báo lỗi
+#         if not CustomUser.objects.filter(email=attrs['email']).exists():
+#             raise serializers.ValidationError({'email': 'Email không tồn tại.'})
+#         return attrs
+#     def submit(self):
+#         validated_data = self.validated_data
+#         email = validated_data['email']
+#         password = validated_data['password']
+#         user = CustomUser.objects.get(email=email)
+#         if not user.check_password(password):
+#             raise serializers.ValidationError({'password': 'Mật khẩu không đúng.'})
+#         return user
+    
