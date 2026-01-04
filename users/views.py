@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import IsAuthenticated
-from .serializers import RegisterSerializer, ProfileSerializer, ChangeProfileSerializer
+from .serializers import RegisterSerializer, ProfileSerializer, ChangeProfileSerializer, ChangePasswordSerializer
 
 #============================
 # Create your views here.
@@ -124,5 +124,24 @@ class ChangeProfileView(APIView):
             }, status=status.HTTP_200_OK)
         return Response({
             'message': 'Profile update failed.',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+#============================
+# change password view
+#============================
+class ChangePasswordView(APIView):
+    # khi sử dụng API này, người dùng phải được xác thực
+    permission_classes = (IsAuthenticated,)
+
+    def put(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            request.user.set_password(serializer.validated_data['new_password'])
+            request.user.save()
+            return Response({
+                'message': 'Password changed successfully.',
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'message': 'Password change failed.',
             'errors': serializer.errors,
         }, status=status.HTTP_400_BAD_REQUEST)

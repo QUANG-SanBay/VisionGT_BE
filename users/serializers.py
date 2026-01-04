@@ -108,3 +108,16 @@ class ChangeProfileSerializer(serializers.ModelSerializer):
             instance.gender = gender
         instance.save()
         return instance
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+    confirm_new_password = serializers.CharField(required=True)
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_new_password']:
+            raise serializers.ValidationError({'new_password': 'Mật khẩu mới không khớp.'})
+        return attrs
+    def validate_old_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError('Mật khẩu cũ không đúng.')
+        return value
