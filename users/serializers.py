@@ -1,9 +1,12 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 import uuid
 from .models import CustomUser
 
 class RegisterSerializer(serializers.ModelSerializer):
-    
+    email = serializers.EmailField(
+        validators=[UniqueValidator(queryset=CustomUser.objects.all(), lookup='iexact')]
+    )
     password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True) # Confirm password field
     full_name = serializers.CharField(max_length=100, write_only=True) # Full name field
     class Meta:
@@ -13,8 +16,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             'password': {'write_only': True}
         }
     def validate(self, attrs):
-        if CustomUser.objects.filter(email=attrs['email']).exists():
-            raise serializers.ValidationError({'email': 'Email đã được sử dụng.'})
+        email = attrs.get('email', '').strip().lower()
+        attrs['email'] = email
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({'password': 'Mật khẩu không khớp.'})
         return attrs
@@ -55,25 +58,5 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
-# class loginSerializer(serializers.ModelSerializer):
-#     email = serializers.EmailField(max_length=100)
-#     class Meta:
-#         model = CustomUser
-#         fields = ['email', 'password']
-#         extra_kwargs = {
-#             'password': {'write_only': True}
-#         }
-#     def validate(self, attrs):
-#         #nếu email không tồn tại trong db thì báo lỗi
-#         if not CustomUser.objects.filter(email=attrs['email']).exists():
-#             raise serializers.ValidationError({'email': 'Email không tồn tại.'})
-#         return attrs
-#     def submit(self):
-#         validated_data = self.validated_data
-#         email = validated_data['email']
-#         password = validated_data['password']
-#         user = CustomUser.objects.get(email=email)
-#         if not user.check_password(password):
-#             raise serializers.ValidationError({'password': 'Mật khẩu không đúng.'})
-#         return user
+
     

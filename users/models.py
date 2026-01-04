@@ -9,6 +9,13 @@ class CustomUser(AbstractUser):
         ('admin', 'Admin'),
         ('customer', 'Customer'),
     ]
+    GENDER_CHOICES = [
+        ('male', 'Nam'),
+        ('female', 'Nữ'),
+        ('other', 'Khác'),
+    ]
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
+    
     role = models.CharField(max_length=20, choices=ROLES_CHOICES, default='customer')
     email = models.EmailField(unique=True)  # Ensure email is unique
     USERNAME_FIELD = 'email'  # Use email as the unique identifier for authentication
