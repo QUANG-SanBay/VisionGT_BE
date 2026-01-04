@@ -46,6 +46,7 @@ INSTALLED_APPS = [
 
     # Local apps (chúng ta sẽ tạo chúng ở bước sau)
     'users.apps.UsersConfig',
+    'dashboard.apps.DashboardConfig',
     'recognition.apps.RecognitionConfig',
     'traffic_signs.apps.TrafficSignsConfig',
 ]
