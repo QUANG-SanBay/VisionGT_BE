@@ -22,3 +22,5 @@ class CustomUser(AbstractUser):
     REQUIRED_FIELDS = ['username']  # Username is still required, but not used for authentication
     def __str__(self):
         return str(self.email)
+    def get_full_name(self):
+        return f"{self.first_name} {self.last_name}".strip()

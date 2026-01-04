@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
+from rest_framework import exceptions
 import uuid
 from .models import CustomUser
 
@@ -59,4 +60,51 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
-    
+class ProfileSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False)
+    full_name = serializers.CharField(source='get_full_name', read_only=True)
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'username', 'email', 'full_name', 'gender', 'date_joined']
+        read_only_fields = ['id', 'username', 'date_joined']
+
+    def validate_email(self, value):
+        email = value.strip().lower()
+        user_qs = CustomUser.objects.filter(email__iexact=email)
+        if self.instance:
+            user_qs = user_qs.exclude(pk=self.instance.pk)
+        if user_qs.exists():
+            raise exceptions.ValidationError('Email đã được sử dụng.')
+        return email
+class ChangeProfileSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False)
+    full_name = serializers.CharField(source='get_full_name', required=False)
+    class Meta:
+        model = CustomUser
+        fields = ['email', 'full_name', 'gender']
+    def validate_email(self, value):
+        email = value.strip().lower()
+        user_qs = CustomUser.objects.filter(email__iexact=email)
+        if self.instance:
+            user_qs = user_qs.exclude(pk=self.instance.pk)
+        if user_qs.exists():
+            raise exceptions.ValidationError('Email đã được sử dụng.')
+        return email
+    def update(self, instance, validated_data):
+        # Cập nhật email nếu có trong validated_data
+        email = validated_data.get('email')
+        if email:
+            instance.email = email
+
+        # Cập nhật full_name nếu có trong validated_data
+        full_name = validated_data.get('get_full_name')
+        if full_name:
+            name_parts = full_name.split(' ', 1)
+            instance.first_name = name_parts[0]
+            instance.last_name = name_parts[1] if len(name_parts) > 1 else ''
+        # Cập nhật gender nếu có trong validated_data
+        gender = validated_data.get('gender')   
+        if gender is not None:
+            instance.gender = gender
+        instance.save()
+        return instance

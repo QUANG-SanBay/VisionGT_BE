@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import IsAuthenticated
-from .serializers import RegisterSerializer
+from .serializers import RegisterSerializer, ProfileSerializer, ChangeProfileSerializer
 
 #============================
 # Create your views here.
@@ -104,14 +104,8 @@ class ProfileView(APIView):
     permission_classes = (IsAuthenticated,)
     # Lấy thông tin profile của người dùng hiện tại
     def get(self, request):
-        user = request.user
-        profile_data = {
-            'username': user.username,
-            'full_name': user.get_full_name(),
-            'gender': user.gender,
-            'email': user.email,
-        }
-        return Response(profile_data, status=status.HTTP_200_OK)
+        serializer = ProfileSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 #============================
 # change profile view
@@ -121,13 +115,14 @@ class ChangeProfileView(APIView):
     permission_classes = (IsAuthenticated,)
 
     def put(self, request):
-        user = request.user
-        data = request.data
-
-        # Cập nhật các trường thông tin cá nhân nếu có trong request data
-        user.email = data.get('email', user.email)
-        user.first_name = data.get('first_name', user.first_name)
-        user.last_name = data.get('last_name', user.last_name)
-        user.gender = data.get('gender', user.gender)
-        user.save()
-        return Response({'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
+        serializer = ChangeProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully.',
+                'user': serializer.data,
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'message': 'Profile update failed.',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
