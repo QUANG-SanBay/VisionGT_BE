@@ -14,7 +14,7 @@ class CustomUser(AbstractUser):
         ('female', 'Nữ'),
         ('other', 'Khác'),
     ]
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True, default='other')
     
     role = models.CharField(max_length=20, choices=ROLES_CHOICES, default='customer')  # nếu is_staff = True thì role = admin
     # Override the save method to set role based on is_staff
