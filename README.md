@@ -13,11 +13,20 @@ Trên macOS/Linux:
 source venv/bin/activate
 ```
 ## Lệnh hữu ích
- tạo schema cho db
+1. Cài đặt toàn bộ thư viện trong 1 lệnh
+```bash
+pip install -r requirements.txt
+```
+2. Tạo schema cho db
 ```bash
 python manage.py makemigrations
 python manage.py migrate
 ```
+3. Runserver
+```bash 
+python manage.py runserver
+```
+
 
 
 ## các thư viện cần thiết
