@@ -14,9 +14,14 @@ class CustomUser(AbstractUser):
         ('female', 'Nữ'),
         ('other', 'Khác'),
     ]
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True, default='other')
     
-    role = models.CharField(max_length=20, choices=ROLES_CHOICES, default='customer')
+    role = models.CharField(max_length=20, choices=ROLES_CHOICES, default='customer')  # nếu is_staff = True thì role = admin
+    # Override the save method to set role based on is_staff
+    def save(self, *args, **kwargs):
+        if self.is_staff:
+            self.role = 'admin'
+        super().save(*args, **kwargs)
     email = models.EmailField(unique=True)  # Ensure email is unique
     USERNAME_FIELD = 'email'  # Use email as the unique identifier for authentication
     REQUIRED_FIELDS = ['username']  # Username is still required, but not used for authentication
