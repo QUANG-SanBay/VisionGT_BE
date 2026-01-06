@@ -20,6 +20,7 @@ pip install -r requirements.txt
 2. Tạo schema cho db
 ```bash
 python manage.py makemigrations
+python manage.py migrate token_blacklist 0008 --fake
 python manage.py migrate
 ```
 3. Runserver

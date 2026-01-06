@@ -1,3 +1,7 @@
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.facebook.views import FacebookOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -145,3 +149,19 @@ class ChangePasswordView(APIView):
             'message': 'Password change failed.',
             'errors': serializer.errors,
         }, status=status.HTTP_400_BAD_REQUEST)
+
+#===========================
+# Login with social accounts (Google / Facebook)
+#===========================
+class GoogleLogin(SocialLoginView):
+    """Nhận access_token từ frontend, xác thực với Google và trả JWT hệ thống."""
+    adapter_class = GoogleOAuth2Adapter
+    callback_url = 'http://localhost:3000'
+    client_class = OAuth2Client
+
+
+class FacebookLogin(SocialLoginView):
+    """Nhận access_token từ frontend, xác thực với Facebook và trả JWT hệ thống."""
+    adapter_class = FacebookOAuth2Adapter
+    callback_url = 'http://localhost:3000'
+    client_class = OAuth2Client
