@@ -1,6 +1,7 @@
 from django.conf import settings
 from rest_framework import serializers
 from .models import Detection, RecognitionHistory, RecognitionResult
+from traffic_signs.models import TrafficSign
 
 
 class DetectionUploadSerializer(serializers.Serializer):
@@ -34,7 +35,22 @@ class DetectionSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(obj.output_file.url) if obj.output_file and request else (obj.output_file.url if obj.output_file else None)
 
 
+class TrafficSignSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrafficSign
+        fields = [
+            "sign_Code",
+            "name",
+            "description",
+            "category",
+            "image_url",
+            "penalty_details",
+        ]
+
+
 class RecognitionResultSerializer(serializers.ModelSerializer):
+    traffic_sign = TrafficSignSerializer(read_only=True)
+
     class Meta:
         model = RecognitionResult
         fields = [

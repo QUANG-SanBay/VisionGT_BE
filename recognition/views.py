@@ -59,18 +59,26 @@ class DetectionUploadRunView(APIView):
 
         try:
             input_path = Path(detection.file.path)
+            detection_sign_pairs = []
             if file_type == "image":
-                detections, out_path = predict_image_with_save(input_path)
+                raw_detections, out_path = predict_image_with_save(input_path)
             else:
                 return Response({"message": "Video inference is not supported with remote model"}, status=status.HTTP_400_BAD_REQUEST)
 
-            detection.result = {"detections": detections}
+            enriched_detections = []
+            for det in raw_detections:
+                sign = self._match_sign(det.get("class_id"))
+                enriched = {**det, "traffic_sign": self._serialize_sign(sign)}
+                enriched_detections.append(enriched)
+                detection_sign_pairs.append((det, sign))
+
+            detection.result = {"detections": enriched_detections}
             detection.status = "done"
             if out_path and out_path.exists():
                 detection.output_file.name = f"results/{out_path.name}"
             detection.save()
 
-            history_data = self._save_history(request, detections, detection)
+            history_data = self._save_history(request, detection_sign_pairs, detection)
             return Response({
                 "detection": DetectionSerializer(detection, context={"request": request}).data,
                 "history": history_data,
@@ -91,7 +99,19 @@ class DetectionUploadRunView(APIView):
         except Exception:
             return None
 
-    def _save_history(self, request, detections, detection: Detection):
+    def _serialize_sign(self, sign: TrafficSign | None):
+        if not sign:
+            return None
+        return {
+            "sign_Code": sign.sign_Code,
+            "name": sign.name,
+            "description": sign.description,
+            "category": sign.category,
+            "image_url": sign.image_url,
+            "penalty_details": sign.penalty_details,
+        }
+
+    def _save_history(self, request, detection_sign_pairs, detection: Detection):
         input_url = request.build_absolute_uri(detection.file.url) if detection.file else None
         output_url = request.build_absolute_uri(detection.output_file.url) if detection.output_file else None
 
@@ -101,8 +121,7 @@ class DetectionUploadRunView(APIView):
             ouput_image_url=output_url,
         )
 
-        for det in detections:
-            sign = self._match_sign(det.get("class_id")) if det else None
+        for det, sign in detection_sign_pairs:
             RecognitionResult.objects.create(
                 bounding_box=_bbox_to_dict(det.get("bbox")) if det else {},
                 confidence_score=det.get("confidence", 0) if det else 0,
@@ -122,6 +141,14 @@ class DetectionDetailView(APIView):
         except Detection.DoesNotExist:
             return Response({"message": "Not found"}, status=status.HTTP_404_NOT_FOUND)
         return Response(DetectionSerializer(detection, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+class RecognitionHistoryListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        histories = RecognitionHistory.objects.filter(user=request.user).order_by("-timestamp")
+        return Response(RecognitionHistorySerializer(histories, many=True).data, status=status.HTTP_200_OK)
 
 
 # View cũ demo nhanh ảnh đơn

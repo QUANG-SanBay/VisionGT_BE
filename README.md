@@ -22,6 +22,8 @@ pip install -r requirements.txt
 python manage.py makemigrations
 python manage.py migrate token_blacklist 0008 --fake
 python manage.py migrate
+python scripts/load_classes.py
+python scripts/add_sign_metadata.py
 ```
 3. Runserver
 ```bash 
