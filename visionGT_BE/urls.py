@@ -15,7 +15,6 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from recognition.views import TrafficSignDetectView
 from django.urls import path, include
 
 urlpatterns = [
@@ -24,5 +23,5 @@ urlpatterns = [
     path('api/dashboard/', include('dashboard.urls')),
     path('api/auth/', include('dj_rest_auth.urls')),
     path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
-    # path('api/detect/', TrafficSignDetectView.as_view()),
+    path('api/recognition/', include('recognition.urls')),
 ]

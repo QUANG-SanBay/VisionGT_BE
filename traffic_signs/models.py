@@ -8,6 +8,7 @@ class TrafficSign(models.Model):
     category = models.CharField(max_length=50)
     image_url = models.URLField(max_length=200, null=True, blank=True)
     penalty_details = models.TextField(null=True, blank=True)
+    model_class_id = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
     
