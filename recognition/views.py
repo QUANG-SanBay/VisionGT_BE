@@ -67,8 +67,7 @@ class DetectionUploadRunView(APIView):
             detection.result = {"detections": detections}
             detection.status = "done"
             if out_path and out_path.exists():
-                with out_path.open("rb") as f:
-                    detection.output_file.save(out_path.name, File(f), save=False)
+                detection.output_file.name = f"results/{out_path.name}"
             detection.save()
 
             history_data = self._save_history(request, detections, detection)
