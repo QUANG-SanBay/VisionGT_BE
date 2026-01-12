@@ -33,16 +33,54 @@ class DetectionSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'status', 'created_at']
 
 
-class DetectionDetailSerializer(serializers.ModelSerializer):
-    """Serializer chi tiết cho Detection - bao gồm các biển báo phát hiện được"""
-    detected_signs = DetectedSignSerializer(many=True, read_only=True)
-    output_file_url = serializers.SerializerMethodField()
+class DetectionSummarySerializer(serializers.ModelSerializer):
+    """Serializer tóm tắt cho Detection sau khi upload - chỉ thông tin cơ bản"""
     signs_summary = serializers.SerializerMethodField()
     
     class Meta:
         model = Detection
         fields = [
-            'id', 'file', 'output_file', 'output_file_url', 'file_type', 
+            'id', 'output_file', 'file_type', 'status', 
+            'fps', 'duration', 'created_at', 'signs_summary'
+        ]
+        read_only_fields = ['id', 'output_file', 'status', 'fps', 'duration', 'created_at']
+    
+    def get_signs_summary(self, obj):
+        """Tóm tắt cơ bản: tên biển, số lần xuất hiện, tỉ lệ confidence trung bình"""
+        signs = obj.detected_signs.all()
+        summary = {}
+        for sign in signs:
+            if sign.class_name not in summary:
+                summary[sign.class_name] = {
+                    'count': 0,
+                    'total_duration': 0,
+                    'confidences': []
+                }
+            summary[sign.class_name]['count'] += 1
+            if sign.start_time is not None and sign.end_time is not None:
+                duration = sign.end_time - sign.start_time
+                summary[sign.class_name]['total_duration'] += duration
+            summary[sign.class_name]['confidences'].append(sign.confidence)
+        
+        # Tính confidence trung bình và làm tròn
+        for sign_name, data in summary.items():
+            confidences = data['confidences']
+            data['avg_confidence'] = round(sum(confidences) / len(confidences), 3) if confidences else 0
+            data['total_duration'] = round(data['total_duration'], 2)
+            del data['confidences']  # Xóa list gốc
+        
+        return summary
+
+
+class DetectionDetailSerializer(serializers.ModelSerializer):
+    """Serializer chi tiết cho Detection - bao gồm các biển báo phát hiện được"""
+    detected_signs = DetectedSignSerializer(many=True, read_only=True)
+    signs_summary = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Detection
+        fields = [
+            'id', 'file', 'output_file', 'file_type', 
             'status', 'fps', 'duration', 'total_frames', 
             'error_message', 'created_at', 'detected_signs', 'signs_summary'
         ]
@@ -50,14 +88,6 @@ class DetectionDetailSerializer(serializers.ModelSerializer):
             'id', 'output_file', 'status', 'fps', 'duration', 
             'total_frames', 'error_message', 'created_at'
         ]
-    
-    def get_output_file_url(self, obj):
-        """Trả về URL đầy đủ của file output"""
-        if obj.output_file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.output_file.url)
-        return None
     
     def get_signs_summary(self, obj):
         """Tóm tắt số lượng từng loại biển báo"""

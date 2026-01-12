@@ -10,12 +10,14 @@ from rest_framework.permissions import AllowAny
 
 from .models import Detection, DetectedSign, RecognitionHistory
 from .serializers import (
-    DetectionSerializer, 
+    DetectionSerializer,
+    DetectionSummarySerializer,
     DetectionDetailSerializer,
     RecognitionHistorySerializer
 )
 from traffic_signs.models import TrafficSign
 from ai_engine.yolo_infer import predict_image_with_save, predict_video_with_save
+from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
@@ -23,40 +25,40 @@ logger = logging.getLogger(__name__)
 class DetectionUploadRunView(generics.CreateAPIView):
     """
     API endpoint để upload hình ảnh/video và chạy nhận diện biển báo
+    Yêu cầu đăng nhập
     
     POST /api/recognition/upload-run/
     Form-data:
         - file: file upload (image hoặc video)
         - file_type: "image" hoặc "video"
     
-    Response:
+    Response (Summary):
         {
             "success": true,
             "message": "Nhận diện thành công",
             "detection_id": 123,
             "file_type": "video",
-            "detected_signs": [
-                {
-                    "id": 1,
-                    "class_name": "Cấm rẽ trái",
-                    "confidence": 0.95,
-                    "start_time": 1.5,
-                    "end_time": 3.2,
-                    "traffic_sign": {
-                        "sign_Code": "P.123",
-                        "name": "Cấm rẽ trái",
-                        "description": "...",
-                        "category": "Biển cấm",
-                        "penalty_details": "..."
+            "data": {
+                "id": 123,
+                "output_file": "http://...",
+                "file_type": "video",
+                "status": "done",
+                "fps": 30.0,
+                "duration": 10.5,
+                "created_at": "...",
+                "signs_summary": {
+                    "Cấm rẽ trái": {
+                        "count": 3,
+                        "total_duration": 5.2,
+                        "avg_confidence": 0.89
                     }
                 }
-            ],
-            "output_file_url": "http://localhost:8000/media/results/vid_xxx.mp4"
+            }
         }
     """
     serializer_class = DetectionSerializer
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [AllowAny]  # Hoặc IsAuthenticated nếu cần đăng nhập
+    permission_classes = [IsAuthenticated]  # Yêu cầu đăng nhập
     
     def create(self, request, *args, **kwargs):
         # Validate input
@@ -102,7 +104,7 @@ class DetectionUploadRunView(generics.CreateAPIView):
             file=file,
             file_type=file_type,
             status='processing',
-            user=request.user if request.user.is_authenticated else None
+            user=request.user  # Lưu user đã đăng nhập
         )
         
         try:
@@ -110,8 +112,11 @@ class DetectionUploadRunView(generics.CreateAPIView):
             file_path = Path(detection.file.path)
             
             if file_type == 'image':
-                # Xử lý ảnh
-                detections, output_path = predict_image_with_save(file_path, conf=0.25)
+                # Xử lý ảnh với confidence threshold 0.5
+                detections, output_path = predict_image_with_save(file_path, conf=0.5)
+                
+                # Lọc overlapping detections
+                detections = self._filter_overlapping_detections(detections)
                 
                 # Lưu output file
                 with open(output_path, 'rb') as f:
@@ -121,8 +126,12 @@ class DetectionUploadRunView(generics.CreateAPIView):
                 self._create_detected_signs_for_image(detection, detections)
                 
             else:  # video
-                # Xử lý video
-                frame_detections, output_path, fps = predict_video_with_save(file_path, conf=0.25)
+                # Xử lý video với confidence threshold 0.5
+                frame_detections, output_path, fps = predict_video_with_save(file_path, conf=0.5)
+                
+                # Lọc overlapping detections cho từng frame
+                for frame_data in frame_detections:
+                    frame_data['detections'] = self._filter_overlapping_detections(frame_data['detections'])
                 
                 # Lưu output file
                 with open(output_path, 'rb') as f:
@@ -140,8 +149,8 @@ class DetectionUploadRunView(generics.CreateAPIView):
             detection.status = 'done'
             detection.save()
             
-            # Trả về response
-            serializer = DetectionDetailSerializer(detection, context={'request': request})
+            # Trả về response với thông tin tóm tắt
+            serializer = DetectionSummarySerializer(detection, context={'request': request})
             return Response({
                 "success": True,
                 "message": "Nhận diện thành công",
@@ -161,6 +170,73 @@ class DetectionUploadRunView(generics.CreateAPIView):
                 "message": f"Lỗi khi xử lý: {str(e)}",
                 "detection_id": detection.id
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _calculate_iou(self, box1, box2):
+        """Tính Intersection over Union (IoU) giữa 2 bounding boxes"""
+        x1_min, y1_min, x1_max, y1_max = box1
+        x2_min, y2_min, x2_max, y2_max = box2
+        
+        # Tính diện tích giao nhau
+        inter_x_min = max(x1_min, x2_min)
+        inter_y_min = max(y1_min, y2_min)
+        inter_x_max = min(x1_max, x2_max)
+        inter_y_max = min(y1_max, y2_max)
+        
+        if inter_x_max < inter_x_min or inter_y_max < inter_y_min:
+            return 0.0
+        
+        inter_area = (inter_x_max - inter_x_min) * (inter_y_max - inter_y_min)
+        
+        # Tính diện tích hợp nhất
+        box1_area = (x1_max - x1_min) * (y1_max - y1_min)
+        box2_area = (x2_max - x2_min) * (y2_max - y2_min)
+        union_area = box1_area + box2_area - inter_area
+        
+        return inter_area / union_area if union_area > 0 else 0.0
+    
+    def _filter_overlapping_detections(self, detections, iou_threshold=0.5):
+        """
+        Lọc các detections bị overlap (Non-Maximum Suppression)
+        Chỉ giữ detection có confidence cao nhất trong nhóm overlap
+        """
+        if not detections:
+            return detections
+        
+        # Sắp xếp theo confidence giảm dần
+        sorted_dets = sorted(detections, key=lambda x: x.get('confidence', 0), reverse=True)
+        
+        filtered = []
+        skip_indices = set()
+        
+        for i, det1 in enumerate(sorted_dets):
+            if i in skip_indices:
+                continue
+            
+            filtered.append(det1)
+            bbox1 = det1.get('bbox', [])
+            
+            if len(bbox1) != 4:
+                continue
+            
+            # So sánh với các detections còn lại
+            for j in range(i + 1, len(sorted_dets)):
+                if j in skip_indices:
+                    continue
+                
+                det2 = sorted_dets[j]
+                bbox2 = det2.get('bbox', [])
+                
+                if len(bbox2) != 4:
+                    continue
+                
+                # Tính IoU
+                iou = self._calculate_iou(bbox1, bbox2)
+                
+                # Nếu overlap quá nhiều, bỏ detection có confidence thấp hơn
+                if iou > iou_threshold:
+                    skip_indices.add(j)
+        
+        return filtered
     
     def _create_detected_signs_for_image(self, detection, detections):
         """Tạo DetectedSign cho ảnh"""
@@ -305,25 +381,31 @@ class DetectionUploadRunView(generics.CreateAPIView):
 
 class DetectionDetailView(generics.RetrieveAPIView):
     """
-    API endpoint để xem chi tiết một detection
+    API endpoint để xem chi tiết đầy đủ một detection
+    Yêu cầu đăng nhập và chỉ xem được detection của chính mình
     
     GET /api/recognition/detection/<id>/
     """
-    queryset = Detection.objects.all()
     serializer_class = DetectionDetailSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Chỉ cho phép user xem detection của chính mình
+        return Detection.objects.filter(user=self.request.user)
 
 
 class RecognitionHistoryListView(generics.ListAPIView):
     """
-    API endpoint để xem lịch sử nhận diện (legacy)
+    API endpoint để xem danh sách lịch sử nhận diện (Detection)
+    Yêu cầu đăng nhập và chỉ xem được lịch sử của chính mình
     
     GET /api/recognition/history/
+    
+    Response: Danh sách các detection đã thực hiện (thông tin tóm tắt)
     """
-    serializer_class = RecognitionHistorySerializer
-    # permission_classes = [IsAuthenticated]
+    serializer_class = DetectionSummarySerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        if self.request.user.is_authenticated:
-            return RecognitionHistory.objects.filter(user=self.request.user)
-        return RecognitionHistory.objects.none()
+        # Trả về danh sách detection của user, sắp xếp mới nhất trước
+        return Detection.objects.filter(user=self.request.user).order_by('-created_at')
