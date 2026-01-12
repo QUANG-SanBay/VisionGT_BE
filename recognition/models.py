@@ -10,6 +10,7 @@ class Detection(models.Model):
     )
     STATUSES = (
         ("pending", "Pending"),
+        ("processing", "Processing"),
         ("done", "Done"),
         ("failed", "Failed"),
     )
@@ -17,13 +18,43 @@ class Detection(models.Model):
     file = models.FileField(upload_to="uploads/")
     output_file = models.FileField(upload_to="results/", null=True, blank=True)
     file_type = models.CharField(max_length=10, choices=FILE_TYPES)
-    status = models.CharField(max_length=10, choices=STATUSES, default="pending")
-    result = models.JSONField(null=True, blank=True)
+    status = models.CharField(max_length=15, choices=STATUSES, default="pending")
+    fps = models.FloatField(null=True, blank=True)  # FPS cho video
+    duration = models.FloatField(null=True, blank=True)  # Độ dài video (seconds)
+    total_frames = models.IntegerField(null=True, blank=True)  # Tổng số frames
     error_message = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
 
     def __str__(self):
         return f"Detection {self.id} ({self.file_type})"
+
+
+class DetectedSign(models.Model):
+    """Lưu thông tin chi tiết về từng biển báo được phát hiện"""
+    detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="detected_signs")
+    traffic_sign = models.ForeignKey(TrafficSign, on_delete=models.SET_NULL, null=True, blank=True)
+    class_id = models.IntegerField()  # ID class từ YOLO model
+    class_name = models.CharField(max_length=255)  # Tên biển báo từ YOLO
+    confidence = models.FloatField()  # Độ tin cậy
+    bbox = models.JSONField()  # Bounding box [x1, y1, x2, y2]
+    
+    # Thông tin thời gian cho video
+    start_time = models.FloatField(null=True, blank=True)  # Thời gian bắt đầu xuất hiện (giây)
+    end_time = models.FloatField(null=True, blank=True)  # Thời gian kết thúc xuất hiện (giây)
+    frame_index = models.IntegerField(null=True, blank=True)  # Frame index nếu là ảnh hoặc một frame cụ thể
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['start_time', 'frame_index']
+        indexes = [
+            models.Index(fields=['detection', 'start_time']),
+            models.Index(fields=['traffic_sign']),
+        ]
+
+    def __str__(self):
+        return f"{self.class_name} ({self.confidence:.2f}) - Detection {self.detection_id}"
 
 
 class RecognitionHistory(models.Model):
