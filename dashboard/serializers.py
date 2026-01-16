@@ -1,5 +1,60 @@
 import uuid
-from rest_framework import serializers # import serializers dùng để tạo serializer
+from rest_framework import serializers
+
+
+class DashboardStatsSerializer(serializers.Serializer):
+    """Serializer cho thống kê tổng quan dashboard"""
+    total_users = serializers.IntegerField()
+    total_customers = serializers.IntegerField()
+    total_admins = serializers.IntegerField()
+    total_detections = serializers.IntegerField()
+    total_traffic_signs = serializers.IntegerField()
+    total_detected_signs = serializers.IntegerField()
+    
+    # Thống kê theo trạng thái
+    pending_detections = serializers.IntegerField()
+    processing_detections = serializers.IntegerField()
+    done_detections = serializers.IntegerField()
+    failed_detections = serializers.IntegerField()
+    
+    # Thống kê theo loại file
+    image_detections = serializers.IntegerField()
+    video_detections = serializers.IntegerField()
+
+
+class RecentDetectionSerializer(serializers.Serializer):
+    """Serializer cho các detection gần đây"""
+    id = serializers.IntegerField()
+    file_type = serializers.CharField()
+    status = serializers.CharField()
+    user_email = serializers.EmailField()
+    created_at = serializers.DateTimeField()
+    detected_signs_count = serializers.IntegerField()
+
+
+class TopDetectedSignSerializer(serializers.Serializer):
+    """Serializer cho các biển báo được phát hiện nhiều nhất"""
+    sign_code = serializers.CharField()
+    sign_name = serializers.CharField()
+    category = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class UserActivitySerializer(serializers.Serializer):
+    """Serializer cho hoạt động người dùng"""
+    user_id = serializers.IntegerField()
+    user_email = serializers.EmailField()
+    full_name = serializers.CharField()
+    total_detections = serializers.IntegerField()
+    last_activity = serializers.DateTimeField()
+
+
+class DailyStatsSerializer(serializers.Serializer):
+    """Serializer cho thống kê theo ngày"""
+    date = serializers.DateField()
+    detections_count = serializers.IntegerField()
+    new_users_count = serializers.IntegerField()
+    detected_signs_count = serializers.IntegerField() # import serializers dùng để tạo serializer
 from rest_framework.validators import UniqueValidator # import UniqueValidator để kiểm tra tính duy nhất của trường email
 from rest_framework import exceptions # import exceptions để xử lý ngoại lệ
 
