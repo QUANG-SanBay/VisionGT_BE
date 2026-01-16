@@ -21,11 +21,13 @@ pip install -r requirements.txt
 ```bash
 python manage.py makemigrations
 python manage.py migrate users
+python manage.py migrate token_blacklist 0007
 python manage.py migrate token_blacklist 0008 --fake
 python manage.py migrate
 python scripts/load_classes.py
 python scripts/add_sign_metadata.py
 ```
+> **Lưu ý**: Migration `token_blacklist 0008` cần dùng `--fake` vì có vấn đề tương thích với SQL Server constraints.
 3. Runserver
 ```bash 
 python manage.py runserver
