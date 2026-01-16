@@ -43,10 +43,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
 
-        # Thêm các thông tin tùy chỉnh vào token nếu muốn
-        # Ví dụ: thêm username và email
+        # Thêm các thông tin tùy chỉnh vào token
         token['username'] = user.username
         token['email'] = user.email
+        token['role'] = user.role  # Thêm role vào JWT payload
         return token
 # View để lấy token
 class MyTokenObtainPairView(TokenObtainPairView):
@@ -76,6 +76,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'email': user.email,
                 'username': user.username,
                 'full_name': user.get_full_name(),
+                'role': user.role,  # Thêm role để FE phân quyền
             },
             'userToken': {
                 'access': tokens.get('access'),

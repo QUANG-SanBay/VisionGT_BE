@@ -65,8 +65,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='get_full_name', read_only=True)
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'email', 'full_name', 'gender', 'date_joined']
-        read_only_fields = ['id', 'username', 'date_joined']
+        fields = ['id', 'username', 'email', 'full_name', 'gender', 'role', 'date_joined']
+        read_only_fields = ['id', 'username', 'role', 'date_joined']
 
     def validate_email(self, value):
         email = value.strip().lower()
