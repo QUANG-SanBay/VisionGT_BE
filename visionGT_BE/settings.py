@@ -32,6 +32,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+ # 🔹 DJANGO CORE
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -40,23 +41,27 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sites',
 
-    # 3rd party apps
+    # 🔹 CUSTOM USER (PHẢI TRƯỚC ALLAUTH)
+    'users.apps.UsersConfig',
+
+    # 🔹 THIRD-PARTY
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
 
+    # 🔹 ALLAUTH
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
 
+    # 🔹 DJ-REST-AUTH
     'dj_rest_auth',
     'dj_rest_auth.registration',
 
-    # Local apps
-    'users.apps.UsersConfig',
+    # 🔹 LOCAL APPS KHÁC
     'dashboard.apps.DashboardConfig',
     'recognition.apps.RecognitionConfig',
     'traffic_signs.apps.TrafficSignsConfig',
@@ -177,7 +182,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 # Allauth / social login
 SITE_ID = 1

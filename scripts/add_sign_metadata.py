@@ -196,7 +196,7 @@ SIGN_METADATA = {
         "description": "Báo hiệu đường chỉ dành cho xe máy.",
         "penalty_details": ""
     },
-    "W-233": {
+    "W-233a": {
         "model_class_id": "26",
         "name": "Chướng ngoại vật phía trước",
         "category": "Biển báo nguy hiểm",
