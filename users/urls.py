@@ -1,6 +1,11 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
+
+router = DefaultRouter()
+router.register(r'manage', views.UserManagementViewSet, basename='user-management')
+
 urlpatterns = [
     path('register/', views.registerAPI_view.as_view(), name='register'),
     path('token/', views.MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -13,4 +18,7 @@ urlpatterns = [
     path('profile/', views.ProfileView.as_view(), name='profile_api'),
     path('change-password/', views.ChangePasswordView.as_view(), name='change_password_api'),
     path('change-profile/', views.ChangeProfileView.as_view(), name='change_profile_api'),
+    
+    # Admin user management routes
+    path('', include(router.urls)),
 ]
