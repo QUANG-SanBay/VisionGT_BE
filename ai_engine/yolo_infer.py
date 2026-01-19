@@ -16,9 +16,10 @@ OUTPUT_DIR = BASE_DIR / "media" / "results"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-FONT_SIZE = 20  # tăng cỡ chữ cho video/ảnh
+FONT_SIZE = 18  # tăng cỡ chữ cho video/ảnh
 TEXT_COLOR = (255, 0, 0)          # đỏ
 TEXT_BG_COLOR = (0, 0, 0, 160)    # nền đen trong suốt
+YOLO_INPUT_SIZE = 640  # Kích thước input standard của YOLO model
 
 
 @lru_cache(maxsize=1)
@@ -32,16 +33,83 @@ def _load_local_model():
     return YOLO(str(weight_path))
 
 
-def _run_yolo_on_image(image_path: Path, conf: float) -> list:
+def _run_yolo_on_image(image_path: Path, conf: float) -> Tuple[list, tuple]:
+    """
+    Chạy YOLO inference trên ảnh
+    Returns: (detections, original_size)
+    """
+    # Đọc ảnh gốc
+    img = cv2.imread(str(image_path))
+    if img is None:
+        raise ValueError(f"Cannot read image: {image_path}")
+    
+    original_h, original_w = img.shape[:2]
+    original_size = (original_w, original_h)
+    
+    # Resize về 640x640 để inference (như khi train model)
+    img_resized = cv2.resize(img, (YOLO_INPUT_SIZE, YOLO_INPUT_SIZE))
+    
+    # Run YOLO inference
     model = _load_local_model()
-    results = model.predict(source=str(image_path), conf=conf, verbose=False)
-    return _convert_results(results)
+    results = model.predict(source=img_resized, conf=conf, verbose=False)
+    detections = _convert_results(results)
+    
+    # Scale bounding boxes về kích thước ảnh gốc
+    scale_x = original_w / YOLO_INPUT_SIZE
+    scale_y = original_h / YOLO_INPUT_SIZE
+    
+    for det in detections:
+        bbox = det.get("bbox", [])
+        if len(bbox) == 4:
+            x1, y1, x2, y2 = bbox
+            det["bbox"] = [
+                x1 * scale_x,
+                y1 * scale_y,
+                x2 * scale_x,
+                y2 * scale_y
+            ]
+    
+    return detections, original_size
 
 
-def _run_yolo_on_frame(frame, conf: float) -> list:
+def _run_yolo_on_frame(frame, conf: float, original_size: tuple = None) -> list:
+    """
+    Chạy YOLO inference trên một frame video
+    Args:
+        frame: Frame gốc
+        conf: Confidence threshold
+        original_size: (width, height) của frame gốc, nếu None sẽ lấy từ frame
+    """
+    if original_size is None:
+        original_h, original_w = frame.shape[:2]
+        original_size = (original_w, original_h)
+    else:
+        original_w, original_h = original_size
+    
+    # Resize về 640x640 để inference
+    frame_resized = cv2.resize(frame, (YOLO_INPUT_SIZE, YOLO_INPUT_SIZE))
+    
+    # Run YOLO inference
     model = _load_local_model()
-    results = model.predict(source=frame, conf=conf, verbose=False)
-    return _convert_results(results)
+    results = model.predict(source=frame_resized, conf=conf, verbose=False)
+    detections = _convert_results(results)
+    
+    # Scale bounding boxes về kích thước gốc
+    scale_x = original_w / YOLO_INPUT_SIZE
+    scale_y = original_h / YOLO_INPUT_SIZE
+    
+    for det in detections:
+        bbox = det.get("bbox", [])
+        if len(bbox) == 4:
+            x1, y1, x2, y2 = bbox
+            det["bbox"] = [
+                x1 * scale_x,
+                y1 * scale_y,
+                x2 * scale_x,
+                y2 * scale_y
+            ]
+    
+    return detections
 
 
 def _convert_results(results) -> list:
@@ -82,11 +150,12 @@ def _draw_and_save(image_path: Path, detections: list) -> Path:
 
 
 def predict_image(image_path: Path, conf: float = 0.25):
-    return _run_yolo_on_image(image_path, conf=conf)
+    detections, _ = _run_yolo_on_image(image_path, conf=conf)
+    return detections
 
 
 def predict_image_with_save(image_path: Path, conf: float = 0.25) -> Tuple[list, Path]:
-    detections = _run_yolo_on_image(image_path, conf=conf)
+    detections, _ = _run_yolo_on_image(image_path, conf=conf)
     out_path = _draw_and_save(image_path, detections)
     return detections, out_path
 
@@ -115,6 +184,9 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
     results = []
     frame_idx = 0
     frame_stride = 1  # adjust >1 to sample fewer frames if needed
+    
+    # Lưu kích thước gốc để scale bounding boxes
+    original_size = (width, height)
 
     try:
         while True:
@@ -124,7 +196,8 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
 
             detections = []
             if frame_idx % frame_stride == 0:
-                detections = _run_yolo_on_frame(frame, conf=conf)
+                # Pass original_size để scale bboxes đúng
+                detections = _run_yolo_on_frame(frame, conf=conf, original_size=original_size)
 
             _draw_boxes_on_frame(frame, detections)
             writer.write(frame)
