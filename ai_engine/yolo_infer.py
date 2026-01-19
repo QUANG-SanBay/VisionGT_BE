@@ -101,8 +101,34 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     out_path = OUTPUT_DIR / f"vid_{uuid.uuid4().hex}.mp4"
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
+    
+    # Sử dụng H.264 codec để tương thích với web browsers
+    # Thử các codec theo thứ tự ưu tiên
+    codecs_to_try = [
+        ('avc1', 'H.264 - tốt nhất cho web'),
+        ('H264', 'H.264 alternative'),
+        ('X264', 'x264 encoder'),
+        ('mp4v', 'MPEG-4 fallback')
+    ]
+    
+    writer = None
+    for codec, desc in codecs_to_try:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            test_writer = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
+            if test_writer.isOpened():
+                writer = test_writer
+                print(f"✅ Using codec: {codec} ({desc})")
+                break
+            else:
+                test_writer.release()
+        except Exception as e:
+            print(f"⚠️  Codec {codec} failed: {e}")
+            continue
+    
+    if writer is None:
+        raise RuntimeError("Cannot initialize video writer with any codec. Please install ffmpeg or codec pack.")
+
 
     results = []
     frame_idx = 0

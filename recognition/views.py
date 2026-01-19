@@ -1,9 +1,12 @@
 import os
 import logging
+import mimetypes
 from pathlib import Path
 from django.conf import settings
 from django.core.files import File
+from django.http import FileResponse, Http404
 from rest_framework import generics, status
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
@@ -409,3 +412,73 @@ class RecognitionHistoryListView(generics.ListAPIView):
     def get_queryset(self):
         # Trả về danh sách detection của user, sắp xếp mới nhất trước
         return Detection.objects.filter(user=self.request.user).order_by('-created_at')
+
+
+class ServeMediaFileView(APIView):
+    """
+    API endpoint để serve media files (video/image) với proper headers cho streaming
+    GET /api/recognition/media/<path:file_path>
+    """
+    permission_classes = [AllowAny]  # Có thể thêm authentication nếu cần
+    
+    def get(self, request, file_path):
+        # Xây dựng đường dẫn file đầy đủ
+        media_root = Path(settings.MEDIA_ROOT)
+        full_path = media_root / file_path
+        
+        # Kiểm tra file tồn tại và nằm trong MEDIA_ROOT
+        if not full_path.exists() or not full_path.is_file():
+            raise Http404("File not found")
+        
+        # Kiểm tra file nằm trong MEDIA_ROOT (security)
+        try:
+            full_path.resolve().relative_to(media_root.resolve())
+        except ValueError:
+            raise Http404("Access denied")
+        
+        # Xác định MIME type
+        mime_type, _ = mimetypes.guess_type(str(full_path))
+        if not mime_type:
+            if full_path.suffix.lower() in ['.mp4', '.avi', '.mov']:
+                mime_type = 'video/mp4'
+            elif full_path.suffix.lower() in ['.jpg', '.jpeg', '.png']:
+                mime_type = 'image/jpeg'
+            else:
+                mime_type = 'application/octet-stream'
+        
+        # Mở file và tạo response
+        try:
+            response = FileResponse(
+                open(full_path, 'rb'),
+                content_type=mime_type
+            )
+            
+            # Thêm headers cho video streaming
+            file_size = full_path.stat().st_size
+            response['Content-Length'] = file_size
+            response['Accept-Ranges'] = 'bytes'
+            
+            # Xử lý Range request cho video streaming
+            range_header = request.META.get('HTTP_RANGE', '')
+            if range_header:
+                range_match = range_header.replace('bytes=', '').split('-')
+                start = int(range_match[0]) if range_match[0] else 0
+                end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else file_size - 1
+                
+                response = FileResponse(
+                    open(full_path, 'rb'),
+                    content_type=mime_type,
+                    status=206  # Partial Content
+                )
+                response['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+                response['Content-Length'] = end - start + 1
+                response['Accept-Ranges'] = 'bytes'
+            
+            # Cache control
+            response['Cache-Control'] = 'public, max-age=3600'
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error serving file {file_path}: {str(e)}")
+            raise Http404("Error serving file")

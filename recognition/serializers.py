@@ -36,6 +36,7 @@ class DetectionSerializer(serializers.ModelSerializer):
 class DetectionSummarySerializer(serializers.ModelSerializer):
     """Serializer tóm tắt cho Detection sau khi upload - chỉ thông tin cơ bản"""
     signs_summary = serializers.SerializerMethodField()
+    output_file = serializers.SerializerMethodField()
     
     class Meta:
         model = Detection
@@ -44,6 +45,16 @@ class DetectionSummarySerializer(serializers.ModelSerializer):
             'fps', 'duration', 'created_at', 'signs_summary'
         ]
         read_only_fields = ['id', 'output_file', 'status', 'fps', 'duration', 'created_at']
+    
+    def get_output_file(self, obj):
+        """Trả về URL đầy đủ cho output file qua endpoint serve media"""
+        if obj.output_file:
+            request = self.context.get('request')
+            if request:
+                # Sử dụng endpoint serve media với proper headers
+                file_path = obj.output_file.name  # Lấy path tương đối
+                return request.build_absolute_uri(f'/api/recognition/media/{file_path}')
+        return None
     
     def get_signs_summary(self, obj):
         """Tóm tắt cơ bản: tên biển, số lần xuất hiện, tỉ lệ confidence trung bình"""
@@ -76,6 +87,8 @@ class DetectionDetailSerializer(serializers.ModelSerializer):
     """Serializer chi tiết cho Detection - bao gồm các biển báo phát hiện được"""
     detected_signs = DetectedSignSerializer(many=True, read_only=True)
     signs_summary = serializers.SerializerMethodField()
+    output_file = serializers.SerializerMethodField()
+    file = serializers.SerializerMethodField()
     
     class Meta:
         model = Detection
@@ -88,6 +101,24 @@ class DetectionDetailSerializer(serializers.ModelSerializer):
             'id', 'output_file', 'status', 'fps', 'duration', 
             'total_frames', 'error_message', 'created_at'
         ]
+    
+    def get_file(self, obj):
+        """Trả về URL đầy đủ cho input file"""
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                file_path = obj.file.name
+                return request.build_absolute_uri(f'/api/recognition/media/{file_path}')
+        return None
+    
+    def get_output_file(self, obj):
+        """Trả về URL đầy đủ cho output file qua endpoint serve media"""
+        if obj.output_file:
+            request = self.context.get('request')
+            if request:
+                file_path = obj.output_file.name
+                return request.build_absolute_uri(f'/api/recognition/media/{file_path}')
+        return None
     
     def get_signs_summary(self, obj):
         """Tóm tắt số lượng từng loại biển báo"""
