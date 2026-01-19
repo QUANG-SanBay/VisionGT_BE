@@ -100,34 +100,16 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    temp_path = OUTPUT_DIR / f"temp_{uuid.uuid4().hex}.mp4"
     out_path = OUTPUT_DIR / f"vid_{uuid.uuid4().hex}.mp4"
     
-    # Sử dụng H.264 codec để tương thích với web browsers
-    # Thử các codec theo thứ tự ưu tiên
-    codecs_to_try = [
-        ('avc1', 'H.264 - tốt nhất cho web'),
-        ('H264', 'H.264 alternative'),
-        ('X264', 'x264 encoder'),
-        ('mp4v', 'MPEG-4 fallback')
-    ]
+    # Sử dụng mp4v codec (có sẵn trong OpenCV) để xử lý trước
+    # Sau đó sẽ convert sang H.264 bằng ffmpeg để tương thích web
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(temp_path), fourcc, fps, (width, height))
     
-    writer = None
-    for codec, desc in codecs_to_try:
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*codec)
-            test_writer = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
-            if test_writer.isOpened():
-                writer = test_writer
-                print(f"✅ Using codec: {codec} ({desc})")
-                break
-            else:
-                test_writer.release()
-        except Exception as e:
-            print(f"⚠️  Codec {codec} failed: {e}")
-            continue
-    
-    if writer is None:
-        raise RuntimeError("Cannot initialize video writer with any codec. Please install ffmpeg or codec pack.")
+    if not writer.isOpened():
+        raise RuntimeError("Cannot initialize video writer. Please check OpenCV installation.")
 
 
     results = []
@@ -151,6 +133,37 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
     finally:
         cap.release()
         writer.release()
+    
+    # Convert video sang H.264 để tương thích với web browsers
+    try:
+        import subprocess
+        print(f"🔄 Converting video to H.264 for web compatibility...")
+        
+        # Thử convert bằng ffmpeg
+        result = subprocess.run([
+            'ffmpeg', '-i', str(temp_path),
+            '-c:v', 'libx264',  # H.264 codec
+            '-preset', 'fast',
+            '-crf', '23',  # Quality (lower = better, 18-28 recommended)
+            '-pix_fmt', 'yuv420p',  # Pixel format cho web compatibility
+            '-movflags', '+faststart',  # Enable streaming
+            '-y',  # Overwrite output
+            str(out_path)
+        ], capture_output=True, timeout=300)
+        
+        if result.returncode == 0:
+            print(f"✅ Video converted to H.264 successfully")
+            # Xóa file temp
+            temp_path.unlink(missing_ok=True)
+        else:
+            print(f"⚠️  FFmpeg conversion failed, using original video")
+            # Rename temp file thành out file
+            temp_path.rename(out_path)
+    except (FileNotFoundError, subprocess.SubprocessError) as e:
+        print(f"⚠️  FFmpeg not found or conversion failed: {e}")
+        print(f"   Using mp4v codec (may not play in all browsers)")
+        # Rename temp file thành out file
+        temp_path.rename(out_path)
 
     return results, out_path, float(fps)
 

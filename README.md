@@ -47,7 +47,34 @@ python manage.py runserver
 1. Cài đặt PyTorch trước tiên (truy cập https://pytorch.org/get-started/locally/ để có lệnh chính xác nhất cho hệ điều hành của bạn)
 * Ví dụ cho Windows/Linux với CUDA:
 * pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-2. Cài đặt YOLOv8 và OpenCV
+2. Cài đặt YOLOv11 và OpenCV
 ```bash
 pip install ultralytics opencv-python-headless
+```
+
+## 🎥 Cài đặt FFmpeg (Bắt buộc cho xử lý video)
+FFmpeg được sử dụng để convert video sang định dạng H.264 tương thích với web browsers.
+
+### Windows:
+1. Download FFmpeg từ: https://www.gyan.dev/ffmpeg/builds/
+2. Giải nén và thêm đường dẫn `bin` vào PATH
+3. Hoặc dùng Chocolatey:
+```bash
+choco install ffmpeg
+```
+
+### macOS:
+```bash
+brew install ffmpeg
+```
+
+### Linux (Ubuntu/Debian):
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+### Kiểm tra cài đặt:
+```bash
+ffmpeg -version
 ```
