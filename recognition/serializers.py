@@ -57,7 +57,7 @@ class DetectionSummarySerializer(serializers.ModelSerializer):
         return None
     
     def get_signs_summary(self, obj):
-        """Tóm tắt cơ bản: tên biển, số lần xuất hiện, tỉ lệ confidence trung bình"""
+        """Tóm tắt cơ bản: tên biển, số lần xuất hiện, tỉ lệ confidence trung bình, và timeline xuất hiện"""
         signs = obj.detected_signs.all()
         summary = {}
         for sign in signs:
@@ -65,12 +65,27 @@ class DetectionSummarySerializer(serializers.ModelSerializer):
                 summary[sign.class_name] = {
                     'count': 0,
                     'total_duration': 0,
-                    'confidences': []
+                    'confidences': [],
+                    'appearances': []  # Danh sách các lần xuất hiện
                 }
             summary[sign.class_name]['count'] += 1
+            
+            # Thêm thông tin appearance
+            appearance = {
+                'confidence': round(sign.confidence, 3)
+            }
+            
             if sign.start_time is not None and sign.end_time is not None:
                 duration = sign.end_time - sign.start_time
                 summary[sign.class_name]['total_duration'] += duration
+                appearance['start_time'] = round(sign.start_time, 3)
+                appearance['end_time'] = round(sign.end_time, 3)
+                appearance['duration'] = round(duration, 3)
+            elif sign.frame_index is not None:
+                # Cho ảnh, chỉ có frame_index
+                appearance['frame_index'] = sign.frame_index
+            
+            summary[sign.class_name]['appearances'].append(appearance)
             summary[sign.class_name]['confidences'].append(sign.confidence)
         
         # Tính confidence trung bình và làm tròn
@@ -121,7 +136,7 @@ class DetectionDetailSerializer(serializers.ModelSerializer):
         return None
     
     def get_signs_summary(self, obj):
-        """Tóm tắt số lượng từng loại biển báo"""
+        """Tóm tắt số lượng từng loại biển báo với timeline chi tiết"""
         signs = obj.detected_signs.all()
         summary = {}
         for sign in signs:
@@ -129,12 +144,27 @@ class DetectionDetailSerializer(serializers.ModelSerializer):
                 summary[sign.class_name] = {
                     'count': 0,
                     'total_duration': 0,
-                    'confidences': []
+                    'confidences': [],
+                    'appearances': []  # Danh sách các lần xuất hiện
                 }
             summary[sign.class_name]['count'] += 1
+            
+            # Thêm thông tin appearance
+            appearance = {
+                'confidence': round(sign.confidence, 3)
+            }
+            
             if sign.start_time is not None and sign.end_time is not None:
                 duration = sign.end_time - sign.start_time
                 summary[sign.class_name]['total_duration'] += duration
+                appearance['start_time'] = round(sign.start_time, 3)
+                appearance['end_time'] = round(sign.end_time, 3)
+                appearance['duration'] = round(duration, 3)
+            elif sign.frame_index is not None:
+                # Cho ảnh, chỉ có frame_index
+                appearance['frame_index'] = sign.frame_index
+            
+            summary[sign.class_name]['appearances'].append(appearance)
             summary[sign.class_name]['confidences'].append(sign.confidence)
         
         # Tính confidence trung bình và làm tròn
