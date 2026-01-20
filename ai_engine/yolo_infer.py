@@ -10,13 +10,16 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from ultralytics import YOLO
 
+# Import mapping từ class_id sang sign_code
+from .sign_code_mapping import CLASS_ID_TO_SIGN_CODE
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "media" / "results"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-FONT_SIZE = 18  # tăng cỡ chữ cho video/ảnh
+FONT_SIZE = 12  # tăng cỡ chữ cho video/ảnh
 TEXT_COLOR = (255, 0, 0)          # đỏ
 TEXT_BG_COLOR = (0, 0, 0, 160)    # nền đen trong suốt
 YOLO_INPUT_SIZE = 640  # Kích thước input standard của YOLO model
@@ -131,6 +134,15 @@ def _convert_results(results) -> list:
     return detections
 
 
+def _get_sign_code_label(det: dict) -> str:
+    """Lấy mã biển báo để hiển thị label"""
+    class_id = det.get("class_id")
+    if class_id is not None and class_id in CLASS_ID_TO_SIGN_CODE:
+        return CLASS_ID_TO_SIGN_CODE[class_id]
+    # Fallback về class_id nếu không tìm thấy mapping
+    return str(class_id if class_id is not None else "")
+
+
 def _draw_and_save(image_path: Path, detections: list) -> Path:
     img = Image.open(image_path).convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -141,7 +153,8 @@ def _draw_and_save(image_path: Path, detections: list) -> Path:
             continue
         x1, y1, x2, y2 = bbox
         draw.rectangle([x1, y1, x2, y2], outline=TEXT_COLOR, width=2)
-        label = str(det.get("class_name") or det.get("class_id", ""))
+        # Sử dụng mã biển báo thay vì tên
+        label = _get_sign_code_label(det)
         _draw_label_with_bg(draw, (x1, max(0, y1 - FONT_SIZE)), label, font)
     run_name = f"img_{uuid.uuid4().hex}"
     out_path = OUTPUT_DIR / f"{run_name}.jpg"
@@ -251,7 +264,8 @@ def _draw_boxes_on_frame(frame, detections: list):
             continue
         x1, y1, x2, y2 = map(int, bbox)
         draw.rectangle([x1, y1, x2, y2], outline=TEXT_COLOR, width=2)
-        label = str(det.get("class_name") or det.get("class_id", ""))
+        # Sử dụng mã biển báo thay vì tên
+        label = _get_sign_code_label(det)
         _draw_label_with_bg(draw, (x1, max(0, y1 - FONT_SIZE)), label, font)
     frame[:] = cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
 
