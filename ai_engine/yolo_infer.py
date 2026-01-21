@@ -12,6 +12,10 @@ from ultralytics import YOLO
 
 # Import mapping từ class_id sang sign_code
 from .sign_code_mapping import CLASS_ID_TO_SIGN_CODE
+from .performance_config import (
+    FRAME_STRIDE, BATCH_SIZE, INPUT_SIZE,
+    FFMPEG_PRESET, FFMPEG_CRF
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,7 +26,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 FONT_SIZE = 12  # tăng cỡ chữ cho video/ảnh
 TEXT_COLOR = (255, 0, 0)          # đỏ
 TEXT_BG_COLOR = (0, 0, 0, 160)    # nền đen trong suốt
-YOLO_INPUT_SIZE = 640  # Kích thước input standard của YOLO model
+YOLO_INPUT_SIZE = INPUT_SIZE  # Sử dụng giá trị từ performance_config
 
 
 @lru_cache(maxsize=1)
@@ -173,6 +177,33 @@ def predict_image_with_save(image_path: Path, conf: float = 0.25) -> Tuple[list,
     return detections, out_path
 
 
+def _run_yolo_batch(model, frames_batch: list, conf: float, original_size: tuple) -> list:
+    """Xử lý batch của frames"""
+    results = model.predict(source=frames_batch, conf=conf, verbose=False, stream=False)
+    
+    original_w, original_h = original_size
+    scale_x = original_w / YOLO_INPUT_SIZE
+    scale_y = original_h / YOLO_INPUT_SIZE
+    
+    all_detections = []
+    for res in results:
+        detections = _convert_results([res])
+        # Scale bounding boxes về kích thước gốc
+        for det in detections:
+            bbox = det.get("bbox", [])
+            if len(bbox) == 4:
+                x1, y1, x2, y2 = bbox
+                det["bbox"] = [
+                    x1 * scale_x,
+                    y1 * scale_y,
+                    x2 * scale_x,
+                    y2 * scale_y
+                ]
+        all_detections.append(detections)
+    
+    return all_detections
+
+
 def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list, Path, float]:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -196,25 +227,50 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
 
     results = []
     frame_idx = 0
-    frame_stride = 1  # adjust >1 to sample fewer frames if needed
+    frame_stride = FRAME_STRIDE  # Sử dụng giá trị từ performance_config
+    batch_size = BATCH_SIZE
     
     # Lưu kích thước gốc để scale bounding boxes
     original_size = (width, height)
+    
+    # Batch processing
+    model = _load_local_model()
+    frames_batch = []
+    frames_data = []
 
     try:
         while True:
             ret, frame = cap.read()
             if not ret:
+                # Xử lý batch cuối cùng nếu còn
+                if frames_batch:
+                    detections_batch = _run_yolo_batch(model, frames_batch, conf, original_size)
+                    for i, (frame_to_write, idx) in enumerate(frames_data):
+                        _draw_boxes_on_frame(frame_to_write, detections_batch[i])
+                        writer.write(frame_to_write)
+                        results.append({"frame_index": idx, "detections": detections_batch[i]})
                 break
 
-            detections = []
             if frame_idx % frame_stride == 0:
-                # Pass original_size để scale bboxes đúng
-                detections = _run_yolo_on_frame(frame, conf=conf, original_size=original_size)
-
-            _draw_boxes_on_frame(frame, detections)
-            writer.write(frame)
-            results.append({"frame_index": frame_idx, "detections": detections})
+                # Resize frame cho inference
+                frame_resized = cv2.resize(frame, (YOLO_INPUT_SIZE, YOLO_INPUT_SIZE))
+                frames_batch.append(frame_resized)
+                frames_data.append((frame.copy(), frame_idx))
+                
+                # Khi đủ batch_size thì xử lý
+                if len(frames_batch) >= batch_size:
+                    detections_batch = _run_yolo_batch(model, frames_batch, conf, original_size)
+                    for i, (frame_to_write, idx) in enumerate(frames_data):
+                        _draw_boxes_on_frame(frame_to_write, detections_batch[i])
+                        writer.write(frame_to_write)
+                        results.append({"frame_index": idx, "detections": detections_batch[i]})
+                    frames_batch = []
+                    frames_data = []
+            else:
+                # Frame bị skip, vẫn ghi vào video nhưng không detect
+                writer.write(frame)
+                results.append({"frame_index": frame_idx, "detections": []})
+                
             frame_idx += 1
     finally:
         cap.release()
@@ -229,8 +285,8 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
         result = subprocess.run([
             'ffmpeg', '-i', str(temp_path),
             '-c:v', 'libx264',  # H.264 codec
-            '-preset', 'fast',
-            '-crf', '23',  # Quality (lower = better, 18-28 recommended)
+            '-preset', FFMPEG_PRESET,  # Sử dụng giá trị từ performance_config
+            '-crf', str(FFMPEG_CRF),  # Sử dụng giá trị từ performance_config
             '-pix_fmt', 'yuv420p',  # Pixel format cho web compatibility
             '-movflags', '+faststart',  # Enable streaming
             '-y',  # Overwrite output
