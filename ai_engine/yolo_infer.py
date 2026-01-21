@@ -212,22 +212,35 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
     fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames_orig = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration = total_frames_orig / fps if fps > 0 else 0
 
     temp_path = OUTPUT_DIR / f"temp_{uuid.uuid4().hex}.mp4"
     out_path = OUTPUT_DIR / f"vid_{uuid.uuid4().hex}.mp4"
     
-    # Sử dụng mp4v codec (có sẵn trong OpenCV) để xử lý trước
-    # Sau đó sẽ convert sang H.264 bằng ffmpeg để tương thích web
+    # Cấu hình xử lý: chỉ detect ~7 frame/giây để tăng tốc
+    TARGET_DETECTION_FPS = 7.0
+    frame_stride = max(1, int(fps / TARGET_DETECTION_FPS))  # Tính frame_stride dựa trên FPS gốc
+    
+    # Tính số frame thực tế sẽ detect
+    num_detected_frames = (total_frames_orig + frame_stride - 1) // frame_stride
+    
+    # Tính output_fps để giữ đúng thời lượng video gốc
+    output_fps = num_detected_frames / duration if duration > 0 else TARGET_DETECTION_FPS
+    
+    print(f"📹 Video gốc: {fps:.1f}fps, {duration:.1f}s, {total_frames_orig} frames")
+    print(f"📹 Detection: stride={frame_stride}, ~{num_detected_frames} frames")
+    print(f"📹 Output: {output_fps:.2f}fps để giữ thời lượng {duration:.1f}s")
+    
+    # Sử dụng mp4v codec với output_fps đã tính
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(temp_path), fourcc, fps, (width, height))
+    writer = cv2.VideoWriter(str(temp_path), fourcc, output_fps, (width, height))
     
     if not writer.isOpened():
         raise RuntimeError("Cannot initialize video writer. Please check OpenCV installation.")
 
-
     results = []
     frame_idx = 0
-    frame_stride = FRAME_STRIDE  # Sử dụng giá trị từ performance_config
     batch_size = BATCH_SIZE
     
     # Lưu kích thước gốc để scale bounding boxes
@@ -262,14 +275,11 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
                     detections_batch = _run_yolo_batch(model, frames_batch, conf, original_size)
                     for i, (frame_to_write, idx) in enumerate(frames_data):
                         _draw_boxes_on_frame(frame_to_write, detections_batch[i])
-                        writer.write(frame_to_write)
+                        writer.write(frame_to_write)  # Chỉ ghi frame đã detect
                         results.append({"frame_index": idx, "detections": detections_batch[i]})
                     frames_batch = []
                     frames_data = []
-            else:
-                # Frame bị skip, vẫn ghi vào video nhưng không detect
-                writer.write(frame)
-                results.append({"frame_index": frame_idx, "detections": []})
+            # Bỏ qua frame không detect - KHÔNG ghi vào video output
                 
             frame_idx += 1
     finally:
@@ -307,7 +317,8 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
         # Rename temp file thành out file
         temp_path.rename(out_path)
 
-    return results, out_path, float(fps)
+    # Trả về output_fps đã tính toán để giữ đúng thời lượng
+    return results, out_path, float(output_fps)
 
 
 def _draw_boxes_on_frame(frame, detections: list):

@@ -121,9 +121,15 @@ class DetectionUploadRunView(generics.CreateAPIView):
                 # Lọc overlapping detections
                 detections = self._filter_overlapping_detections(detections)
                 
-                # Lưu output file
+                # Lưu output file - CHỈ LƯU 1 LẦN
                 with open(output_path, 'rb') as f:
-                    detection.output_file.save(output_path.name, File(f), save=False)
+                    detection.output_file.save(output_path.name, File(f), save=True)
+                
+                # Xóa file tạm sau khi Django đã lưu
+                try:
+                    output_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.warning(f"Cannot delete temp file {output_path}: {e}")
                 
                 # Tạo DetectedSign cho ảnh
                 self._create_detected_signs_for_image(detection, detections)
@@ -136,9 +142,15 @@ class DetectionUploadRunView(generics.CreateAPIView):
                 for frame_data in frame_detections:
                     frame_data['detections'] = self._filter_overlapping_detections(frame_data['detections'])
                 
-                # Lưu output file
+                # Lưu output file - CHỈ LƯU 1 LẦN
                 with open(output_path, 'rb') as f:
-                    detection.output_file.save(output_path.name, File(f), save=False)
+                    detection.output_file.save(output_path.name, File(f), save=True)
+                
+                # Xóa file tạm sau khi Django đã lưu
+                try:
+                    output_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.warning(f"Cannot delete temp file {output_path}: {e}")
                 
                 # Lưu thông tin video
                 detection.fps = fps
@@ -148,9 +160,9 @@ class DetectionUploadRunView(generics.CreateAPIView):
                 # Tạo DetectedSign cho video với timeline
                 self._create_detected_signs_for_video(detection, frame_detections, fps)
             
-            # Cập nhật status
+            # Cập nhật status - không cần save() lần nữa vì đã save khi lưu output_file
             detection.status = 'done'
-            detection.save()
+            detection.save(update_fields=['status'])
             
             # Trả về response với thông tin tóm tắt
             serializer = DetectionSummarySerializer(detection, context={'request': request})
