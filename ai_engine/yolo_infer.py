@@ -13,7 +13,9 @@ from ultralytics import YOLO
 # Import mapping từ class_id sang sign_code
 from .sign_code_mapping import CLASS_ID_TO_SIGN_CODE
 from .performance_config import (
-    FRAME_STRIDE, BATCH_SIZE, INPUT_SIZE,
+    IMAGE_INPUT_SIZE, IMAGE_CONF_THRESHOLD,
+    VIDEO_BATCH_SIZE, VIDEO_INPUT_SIZE, VIDEO_CONF_THRESHOLD,
+    VIDEO_TARGET_DETECTION_FPS,
     FFMPEG_PRESET, FFMPEG_CRF
 )
 
@@ -26,7 +28,6 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 FONT_SIZE = 12  # tăng cỡ chữ cho video/ảnh
 TEXT_COLOR = (255, 0, 0)          # đỏ
 TEXT_BG_COLOR = (0, 0, 0, 160)    # nền đen trong suốt
-YOLO_INPUT_SIZE = INPUT_SIZE  # Sử dụng giá trị từ performance_config
 
 
 @lru_cache(maxsize=1)
@@ -42,9 +43,12 @@ def _load_local_model():
 
 def _run_yolo_on_image(image_path: Path, conf: float) -> Tuple[list, tuple]:
     """
-    Chạy YOLO inference trên ảnh
+    Chạy YOLO inference trên ảnh với độ chính xác cao nhất
     Returns: (detections, original_size)
     """
+    print(f"🖼️  Processing image with high accuracy settings...")
+    print(f"   Input size: {IMAGE_INPUT_SIZE}x{IMAGE_INPUT_SIZE}, Confidence: {conf}")
+    
     # Đọc ảnh gốc
     img = cv2.imread(str(image_path))
     if img is None:
@@ -53,17 +57,25 @@ def _run_yolo_on_image(image_path: Path, conf: float) -> Tuple[list, tuple]:
     original_h, original_w = img.shape[:2]
     original_size = (original_w, original_h)
     
-    # Resize về 640x640 để inference (như khi train model)
-    img_resized = cv2.resize(img, (YOLO_INPUT_SIZE, YOLO_INPUT_SIZE))
+    # Resize về IMAGE_INPUT_SIZE để inference (độ chính xác cao)
+    img_resized = cv2.resize(img, (IMAGE_INPUT_SIZE, IMAGE_INPUT_SIZE))
     
-    # Run YOLO inference
+    # Run YOLO inference với settings tối ưu cho ảnh
     model = _load_local_model()
-    results = model.predict(source=img_resized, conf=conf, verbose=False)
+    results = model.predict(
+        source=img_resized, 
+        conf=conf, 
+        verbose=False,
+        iou=0.5,  # IoU threshold cho NMS
+        max_det=100  # Tăng số detection tối đa
+    )
     detections = _convert_results(results)
     
+    print(f"   ✅ Detected {len(detections)} signs")
+    
     # Scale bounding boxes về kích thước ảnh gốc
-    scale_x = original_w / YOLO_INPUT_SIZE
-    scale_y = original_h / YOLO_INPUT_SIZE
+    scale_x = original_w / IMAGE_INPUT_SIZE
+    scale_y = original_h / IMAGE_INPUT_SIZE
     
     for det in detections:
         bbox = det.get("bbox", [])
@@ -77,46 +89,6 @@ def _run_yolo_on_image(image_path: Path, conf: float) -> Tuple[list, tuple]:
             ]
     
     return detections, original_size
-
-
-def _run_yolo_on_frame(frame, conf: float, original_size: tuple = None) -> list:
-    """
-    Chạy YOLO inference trên một frame video
-    Args:
-        frame: Frame gốc
-        conf: Confidence threshold
-        original_size: (width, height) của frame gốc, nếu None sẽ lấy từ frame
-    """
-    if original_size is None:
-        original_h, original_w = frame.shape[:2]
-        original_size = (original_w, original_h)
-    else:
-        original_w, original_h = original_size
-    
-    # Resize về 640x640 để inference
-    frame_resized = cv2.resize(frame, (YOLO_INPUT_SIZE, YOLO_INPUT_SIZE))
-    
-    # Run YOLO inference
-    model = _load_local_model()
-    results = model.predict(source=frame_resized, conf=conf, verbose=False)
-    detections = _convert_results(results)
-    
-    # Scale bounding boxes về kích thước gốc
-    scale_x = original_w / YOLO_INPUT_SIZE
-    scale_y = original_h / YOLO_INPUT_SIZE
-    
-    for det in detections:
-        bbox = det.get("bbox", [])
-        if len(bbox) == 4:
-            x1, y1, x2, y2 = bbox
-            det["bbox"] = [
-                x1 * scale_x,
-                y1 * scale_y,
-                x2 * scale_x,
-                y2 * scale_y
-            ]
-    
-    return detections
 
 
 def _convert_results(results) -> list:
@@ -166,24 +138,36 @@ def _draw_and_save(image_path: Path, detections: list) -> Path:
     return out_path
 
 
-def predict_image(image_path: Path, conf: float = 0.25):
+def predict_image(image_path: Path, conf: float = None):
+    """Predict trên ảnh với confidence mặc định cho độ chính xác cao"""
+    if conf is None:
+        conf = IMAGE_CONF_THRESHOLD
     detections, _ = _run_yolo_on_image(image_path, conf=conf)
     return detections
 
 
-def predict_image_with_save(image_path: Path, conf: float = 0.25) -> Tuple[list, Path]:
+def predict_image_with_save(image_path: Path, conf: float = None) -> Tuple[list, Path]:
+    """Predict và save ảnh với độ chính xác cao nhất"""
+    if conf is None:
+        conf = IMAGE_CONF_THRESHOLD
     detections, _ = _run_yolo_on_image(image_path, conf=conf)
     out_path = _draw_and_save(image_path, detections)
     return detections, out_path
 
 
 def _run_yolo_batch(model, frames_batch: list, conf: float, original_size: tuple) -> list:
-    """Xử lý batch của frames"""
-    results = model.predict(source=frames_batch, conf=conf, verbose=False, stream=False)
+    """Xử lý batch của frames cho video"""
+    results = model.predict(
+        source=frames_batch, 
+        conf=conf, 
+        verbose=False, 
+        stream=False,
+        iou=0.6  # IoU cao hơn cho video
+    )
     
     original_w, original_h = original_size
-    scale_x = original_w / YOLO_INPUT_SIZE
-    scale_y = original_h / YOLO_INPUT_SIZE
+    scale_x = original_w / VIDEO_INPUT_SIZE
+    scale_y = original_h / VIDEO_INPUT_SIZE
     
     all_detections = []
     for res in results:
@@ -204,7 +188,15 @@ def _run_yolo_batch(model, frames_batch: list, conf: float, original_size: tuple
     return all_detections
 
 
-def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list, Path, float]:
+def predict_video_with_save(video_path: Path, conf: float = None) -> Tuple[list, Path, float]:
+    """Xử lý video với cấu hình tối ưu riêng"""
+    if conf is None:
+        conf = VIDEO_CONF_THRESHOLD
+    
+    print(f"🎬 Processing video with optimized settings...")
+    print(f"   Input size: {VIDEO_INPUT_SIZE}x{VIDEO_INPUT_SIZE}, Confidence: {conf}")
+    print(f"   Target detection FPS: {VIDEO_TARGET_DETECTION_FPS}")
+    
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -218,15 +210,14 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
     temp_path = OUTPUT_DIR / f"temp_{uuid.uuid4().hex}.mp4"
     out_path = OUTPUT_DIR / f"vid_{uuid.uuid4().hex}.mp4"
     
-    # Cấu hình xử lý: chỉ detect ~7 frame/giây để tăng tốc
-    TARGET_DETECTION_FPS = 7.0
-    frame_stride = max(1, int(fps / TARGET_DETECTION_FPS))  # Tính frame_stride dựa trên FPS gốc
+    # Sử dụng config từ performance_config
+    frame_stride = max(1, int(fps / VIDEO_TARGET_DETECTION_FPS))  # Tính frame_stride dựa trên FPS gốc
     
     # Tính số frame thực tế sẽ detect
     num_detected_frames = (total_frames_orig + frame_stride - 1) // frame_stride
     
     # Tính output_fps để giữ đúng thời lượng video gốc
-    output_fps = num_detected_frames / duration if duration > 0 else TARGET_DETECTION_FPS
+    output_fps = num_detected_frames / duration if duration > 0 else VIDEO_TARGET_DETECTION_FPS
     
     print(f"📹 Video gốc: {fps:.1f}fps, {duration:.1f}s, {total_frames_orig} frames")
     print(f"📹 Detection: stride={frame_stride}, ~{num_detected_frames} frames")
@@ -241,7 +232,7 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
 
     results = []
     frame_idx = 0
-    batch_size = BATCH_SIZE
+    batch_size = VIDEO_BATCH_SIZE  # Sử dụng config riêng cho video
     
     # Lưu kích thước gốc để scale bounding boxes
     original_size = (width, height)
@@ -265,8 +256,8 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
                 break
 
             if frame_idx % frame_stride == 0:
-                # Resize frame cho inference
-                frame_resized = cv2.resize(frame, (YOLO_INPUT_SIZE, YOLO_INPUT_SIZE))
+                # Resize frame cho inference với VIDEO_INPUT_SIZE
+                frame_resized = cv2.resize(frame, (VIDEO_INPUT_SIZE, VIDEO_INPUT_SIZE))
                 frames_batch.append(frame_resized)
                 frames_data.append((frame.copy(), frame_idx))
                 
@@ -317,8 +308,9 @@ def predict_video_with_save(video_path: Path, conf: float = 0.25) -> Tuple[list,
         # Rename temp file thành out file
         temp_path.rename(out_path)
 
-    # Trả về output_fps đã tính toán để giữ đúng thời lượng
-    return results, out_path, float(output_fps)
+    # Trả về FPS GỐC để tính thời gian xuất hiện ĐÚNG
+    # output_fps chỉ dùng để ghi video, không dùng để tính thời gian!
+    return results, out_path, float(fps)
 
 
 def _draw_boxes_on_frame(frame, detections: list):

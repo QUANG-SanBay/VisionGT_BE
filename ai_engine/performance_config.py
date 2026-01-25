@@ -1,16 +1,30 @@
 # Performance configuration cho YOLO inference
 
-# Frame stride: skip frames để xử lý nhanh hơn
-# 1 = xử lý mọi frame, 3 = xử lý mỗi 3 frame
-FRAME_STRIDE = 1
+# ============================================
+# IMAGE PROCESSING (Độ chính xác tối đa)
+# ============================================
+IMAGE_INPUT_SIZE = 320  # Giữ nguyên kích thước cao nhất cho độ chính xác
+IMAGE_CONF_THRESHOLD = 0.5  # Confidence thấp hơn để detect nhiều hơn
 
+# ============================================
+# VIDEO PROCESSING (Cân bằng tốc độ & độ chính xác)
+# ============================================
 # Batch size cho video processing
-BATCH_SIZE = 4
+VIDEO_BATCH_SIZE = 4
 
-# YOLO input size (nhỏ hơn = nhanh hơn nhưng độ chính xác thấp hơn)
+# YOLO input size cho video (có thể giảm để tăng tốc)
 # Options: 320, 416, 640
-INPUT_SIZE = 640
+VIDEO_INPUT_SIZE = 320  # Giữ 640 để đảm bảo độ chính xác
 
+# Confidence threshold cho video (cao hơn để giảm false positive)
+VIDEO_CONF_THRESHOLD = 0.5
+
+# Target FPS cho detection (giảm để xử lý nhanh hơn)
+VIDEO_TARGET_DETECTION_FPS = 7.0
+
+# ============================================
+# VIDEO ENCODING
+# ============================================
 # FFmpeg preset cho video encoding
 # Options: 'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium'
 FFMPEG_PRESET = 'ultrafast'
