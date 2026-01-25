@@ -282,30 +282,30 @@ def predict_video_with_save(video_path: Path, conf: float = None) -> Tuple[list,
         import subprocess
         print(f"🔄 Converting video to H.264 for web compatibility...")
         
-        # Thử convert bằng ffmpeg
+        # FFmpeg với các flags tối ưu cho web streaming
         result = subprocess.run([
             'ffmpeg', '-i', str(temp_path),
             '-c:v', 'libx264',  # H.264 codec
-            '-preset', FFMPEG_PRESET,  # Sử dụng giá trị từ performance_config
-            '-crf', str(FFMPEG_CRF),  # Sử dụng giá trị từ performance_config
+            '-preset', FFMPEG_PRESET,
+            '-crf', str(FFMPEG_CRF),
             '-pix_fmt', 'yuv420p',  # Pixel format cho web compatibility
-            '-movflags', '+faststart',  # Enable streaming
-            '-y',  # Overwrite output
+            '-movflags', '+faststart',  # Enable progressive streaming
+            '-vsync', 'cfr',  # Constant frame rate - quan trọng!
+            '-g', str(int(output_fps * 2)),  # Keyframe interval (2 giây)
+            '-sc_threshold', '0',  # Disable scene change detection
+            '-force_key_frames', f'expr:gte(t,n_forced*2)',  # Force keyframe mỗi 2s
+            '-y',
             str(out_path)
-        ], capture_output=True, timeout=300)
+        ], capture_output=True, timeout=300, encoding='utf-8', errors='ignore')
         
         if result.returncode == 0:
             print(f"✅ Video converted to H.264 successfully")
-            # Xóa file temp
             temp_path.unlink(missing_ok=True)
         else:
-            print(f"⚠️  FFmpeg conversion failed, using original video")
-            # Rename temp file thành out file
+            print(f"⚠️  FFmpeg conversion failed: {result.stderr}")
             temp_path.rename(out_path)
     except (FileNotFoundError, subprocess.SubprocessError) as e:
         print(f"⚠️  FFmpeg not found or conversion failed: {e}")
-        print(f"   Using mp4v codec (may not play in all browsers)")
-        # Rename temp file thành out file
         temp_path.rename(out_path)
 
     # Trả về FPS GỐC để tính thời gian xuất hiện ĐÚNG
