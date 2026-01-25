@@ -63,8 +63,8 @@ from users.models import CustomUser
 class UserManagementSerializer(serializers.ModelSerializer):
     # khai báo các trường cần thiết cho serializer 
     full_name = serializers.SerializerMethodField(read_only=True)  # Trường full_name được tính toán từ first_name và last_name
-    input_full_name = serializers.CharField(write_only=True, required=True)  # Trường input_full_name để nhận dữ liệu từ client
-    password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=True)  # Trường xác nhận mật khẩu
+    input_full_name = serializers.CharField(write_only=True, required=False)  # Trường input_full_name để nhận dữ liệu từ client
+    password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)  # Trường xác nhận mật khẩu
 
      # Phương thức để tách full_name thành first_name và last_name
     class Meta:
@@ -73,8 +73,8 @@ class UserManagementSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'username']
         #password chỉ dùng để tạo mới user, không bắt buộc khi cập nhật
         extra_kwargs = {
-            'password2': {'write_only': True, 'required': True},
-            'password': {'write_only': True, 'required': True}
+            'password2': {'write_only': True, 'required': False},
+            'password': {'write_only': True, 'required': False}
         }
     
     ###PHẦN ĐỌC###
@@ -90,6 +90,18 @@ class UserManagementSerializer(serializers.ModelSerializer):
         last_name = parts[1] if len(parts) > 1 else ''
         return first_name, last_name
 
+    def validate(self, data):
+        """Validate dữ liệu - chỉ bắt buộc password khi tạo mới"""
+        # Nếu đang tạo mới (không có instance)
+        if not self.instance:
+            if not data.get('password'):
+                raise serializers.ValidationError({'password': 'Mật khẩu là bắt buộc khi tạo user mới.'})
+            if not data.get('password2'):
+                raise serializers.ValidationError({'password2': 'Xác nhận mật khẩu là bắt buộc khi tạo user mới.'})
+            if not data.get('input_full_name'):
+                raise serializers.ValidationError({'input_full_name': 'Họ tên là bắt buộc khi tạo user mới.'})
+        return data
+
     def create(self, validated_data):
          # Lấy full_name từ dữ liệu đã được validate
         full_name = validated_data.pop('input_full_name', '')
@@ -100,12 +112,13 @@ class UserManagementSerializer(serializers.ModelSerializer):
         if password != password2:
             raise serializers.ValidationError({'password': 'Mật khẩu không khớp.'})
          # Tạo user với first_name và last_name đã được tách username từ email + _random
-        base_username = validated_data['email'].split('@')[0]
+        email = validated_data.pop('email')
+        base_username = email.split('@')[0]
         random_suffix = uuid.uuid4().hex[:6]
         username = f"{base_username}_{random_suffix}"
         user = CustomUser(
             username=username,
-            email=validated_data['email'],
+            email=email,
             first_name=first_name,
             last_name=last_name,
             **validated_data
@@ -123,6 +136,17 @@ class UserManagementSerializer(serializers.ModelSerializer):
             first_name, last_name = self._split_full_name(full_name)
             instance.first_name = first_name
             instance.last_name = last_name
+
+        # Xử lý đổi password nếu có
+        password = validated_data.pop('password', None)
+        password2 = validated_data.pop('password2', None)
+        
+        if password and password2:
+            if password != password2:
+                raise serializers.ValidationError({'password': 'Mật khẩu không khớp.'})
+            instance.set_password(password)
+        elif password or password2:
+            raise serializers.ValidationError({'password': 'Cần cung cấp cả password và password2 để đổi mật khẩu.'})
 
         # Cập nhật các trường còn lại như bình thường
         # super().update() sẽ lặp qua các trường còn lại trong validated_data và gán cho instance
