@@ -99,8 +99,8 @@ class DetectionSummarySerializer(serializers.ModelSerializer):
 
 
 class DetectionDetailSerializer(serializers.ModelSerializer):
-    """Serializer chi tiết cho Detection - bao gồm các biển báo phát hiện được"""
-    detected_signs = DetectedSignSerializer(many=True, read_only=True)
+    """Serializer chi tiết cho Detection - bao gồm các biển báo phát hiện được (unique only)"""
+    detected_signs = serializers.SerializerMethodField()
     signs_summary = serializers.SerializerMethodField()
     output_file = serializers.SerializerMethodField()
     file = serializers.SerializerMethodField()
@@ -116,6 +116,30 @@ class DetectionDetailSerializer(serializers.ModelSerializer):
             'id', 'output_file', 'status', 'fps', 'duration', 
             'total_frames', 'error_message', 'created_at'
         ]
+    
+    def get_detected_signs(self, obj):
+        """
+        Trả về danh sách biển báo unique (không trùng lặp)
+        Mỗi loại biển báo chỉ xuất hiện 1 lần, lấy detection có confidence cao nhất
+        """
+        signs = obj.detected_signs.all()
+        
+        # Group theo class_name và lấy detection có confidence cao nhất
+        unique_signs = {}
+        for sign in signs:
+            if sign.class_name not in unique_signs:
+                unique_signs[sign.class_name] = sign
+            else:
+                # So sánh confidence, giữ lại cái có confidence cao hơn
+                if sign.confidence > unique_signs[sign.class_name].confidence:
+                    unique_signs[sign.class_name] = sign
+        
+        # Serialize các signs unique
+        return DetectedSignSerializer(
+            list(unique_signs.values()), 
+            many=True,
+            context=self.context
+        ).data
     
     def get_file(self, obj):
         """Trả về URL đầy đủ cho input file"""
