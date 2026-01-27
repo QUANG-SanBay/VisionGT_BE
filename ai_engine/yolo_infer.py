@@ -38,7 +38,20 @@ def _load_local_model():
     weight_path = Path(weight_path)
     if not weight_path.exists():
         raise FileNotFoundError(f"YOLO weight file not found: {weight_path}")
-    return YOLO(str(weight_path))
+    
+    print("🔥 Loading YOLO model...")
+    model = YOLO(str(weight_path))
+    
+    # Warm-up model với dummy inference để tăng tốc cho lần đầu
+    print("⚡ Warming up model...")
+    try:
+        dummy_img = np.zeros((IMAGE_INPUT_SIZE, IMAGE_INPUT_SIZE, 3), dtype=np.uint8)
+        model.predict(source=dummy_img, conf=0.5, verbose=False)
+        print("✅ Model warmed up successfully")
+    except Exception as e:
+        print(f"⚠️  Model warm-up failed (non-critical): {e}")
+    
+    return model
 
 
 def _run_yolo_on_image(image_path: Path, conf: float) -> Tuple[list, tuple]:
@@ -213,19 +226,14 @@ def predict_video_with_save(video_path: Path, conf: float = None) -> Tuple[list,
     # Sử dụng config từ performance_config
     frame_stride = max(1, int(fps / VIDEO_TARGET_DETECTION_FPS))  # Tính frame_stride dựa trên FPS gốc
     
-    # Tính số frame thực tế sẽ detect
-    num_detected_frames = (total_frames_orig + frame_stride - 1) // frame_stride
-    
-    # Tính output_fps để giữ đúng thời lượng video gốc
-    output_fps = num_detected_frames / duration if duration > 0 else VIDEO_TARGET_DETECTION_FPS
-    
     print(f"📹 Video gốc: {fps:.1f}fps, {duration:.1f}s, {total_frames_orig} frames")
-    print(f"📹 Detection: stride={frame_stride}, ~{num_detected_frames} frames")
-    print(f"📹 Output: {output_fps:.2f}fps để giữ thời lượng {duration:.1f}s")
+    print(f"📹 Detection: stride={frame_stride}, chỉ detect mỗi {frame_stride} frame")
+    print(f"📹 Output: {fps:.1f}fps (giữ FPS gốc), ghi TẤT CẢ frames")
     
-    # Sử dụng mp4v codec với output_fps đã tính
+    # GHI VIDEO VỚI FPS GỐC để giữ đúng thời lượng
+    # Chỉ detect trên một số frames nhưng GHI TẤT CẢ frames
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(temp_path), fourcc, output_fps, (width, height))
+    writer = cv2.VideoWriter(str(temp_path), fourcc, fps, (width, height))
     
     if not writer.isOpened():
         raise RuntimeError("Cannot initialize video writer. Please check OpenCV installation.")
@@ -242,16 +250,20 @@ def predict_video_with_save(video_path: Path, conf: float = None) -> Tuple[list,
     frames_batch = []
     frames_data = []
 
+    # Cache detections cho các frames đã detect
+    frame_detections_map = {}  # {frame_idx: detections}
+    
     try:
+        # PASS 1: Detect trên các frames theo stride
+        print(f"🔍 Pass 1: Detection...")
         while True:
             ret, frame = cap.read()
             if not ret:
                 # Xử lý batch cuối cùng nếu còn
                 if frames_batch:
                     detections_batch = _run_yolo_batch(model, frames_batch, conf, original_size)
-                    for i, (frame_to_write, idx) in enumerate(frames_data):
-                        _draw_boxes_on_frame(frame_to_write, detections_batch[i])
-                        writer.write(frame_to_write)
+                    for i, (_, idx) in enumerate(frames_data):
+                        frame_detections_map[idx] = detections_batch[i]
                         results.append({"frame_index": idx, "detections": detections_batch[i]})
                 break
 
@@ -259,19 +271,40 @@ def predict_video_with_save(video_path: Path, conf: float = None) -> Tuple[list,
                 # Resize frame cho inference với VIDEO_INPUT_SIZE
                 frame_resized = cv2.resize(frame, (VIDEO_INPUT_SIZE, VIDEO_INPUT_SIZE))
                 frames_batch.append(frame_resized)
-                frames_data.append((frame.copy(), frame_idx))
+                frames_data.append((None, frame_idx))  # Không cần lưu frame gốc
                 
                 # Khi đủ batch_size thì xử lý
                 if len(frames_batch) >= batch_size:
                     detections_batch = _run_yolo_batch(model, frames_batch, conf, original_size)
-                    for i, (frame_to_write, idx) in enumerate(frames_data):
-                        _draw_boxes_on_frame(frame_to_write, detections_batch[i])
-                        writer.write(frame_to_write)  # Chỉ ghi frame đã detect
+                    for i, (_, idx) in enumerate(frames_data):
+                        frame_detections_map[idx] = detections_batch[i]
                         results.append({"frame_index": idx, "detections": detections_batch[i]})
                     frames_batch = []
                     frames_data = []
-            # Bỏ qua frame không detect - KHÔNG ghi vào video output
                 
+            frame_idx += 1
+        
+        # PASS 2: Ghi TẤT CẢ frames với detections từ frame gần nhất
+        print(f"✍️  Pass 2: Writing all frames with detections...")
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Reset về đầu video
+        frame_idx = 0
+        last_detections = []  # Cache detection gần nhất
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Nếu frame này có detections thì dùng, không thì dùng detections gần nhất
+            if frame_idx in frame_detections_map:
+                last_detections = frame_detections_map[frame_idx]
+            
+            # Vẽ detections lên frame
+            if last_detections:
+                _draw_boxes_on_frame(frame, last_detections)
+            
+            # GHI TẤT CẢ frames
+            writer.write(frame)
             frame_idx += 1
     finally:
         cap.release()
@@ -290,10 +323,12 @@ def predict_video_with_save(video_path: Path, conf: float = None) -> Tuple[list,
             '-crf', str(FFMPEG_CRF),
             '-pix_fmt', 'yuv420p',  # Pixel format cho web compatibility
             '-movflags', '+faststart',  # Enable progressive streaming
-            '-vsync', 'cfr',  # Constant frame rate - quan trọng!
-            '-g', str(int(output_fps * 2)),  # Keyframe interval (2 giây)
+            '-r', str(fps),  # Force output FPS = input FPS
+            '-vsync', 'cfr',  # Constant frame rate
+            '-g', str(int(fps * 2)),  # Keyframe interval (2 giây)
             '-sc_threshold', '0',  # Disable scene change detection
             '-force_key_frames', f'expr:gte(t,n_forced*2)',  # Force keyframe mỗi 2s
+            '-t', str(duration),  # CRITICAL: Set exact duration
             '-y',
             str(out_path)
         ], capture_output=True, timeout=300, encoding='utf-8', errors='ignore')

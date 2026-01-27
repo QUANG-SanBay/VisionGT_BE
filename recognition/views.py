@@ -477,8 +477,12 @@ class ServeMediaFileView(APIView):
                 start = int(range_match[0]) if range_match[0] else 0
                 end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else file_size - 1
                 
+                # Mở file và seek đến vị trí start
+                file_handle = open(full_path, 'rb')
+                file_handle.seek(start)
+                
                 response = FileResponse(
-                    open(full_path, 'rb'),
+                    file_handle,
                     content_type=mime_type,
                     status=206  # Partial Content
                 )
